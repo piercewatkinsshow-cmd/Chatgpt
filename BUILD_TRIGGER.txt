@@ -1,1 +1,1 @@
-Trigger GitHub Actions APK build.
+Trigger GitHub Actions APK build for CanadaIP 1.1.
