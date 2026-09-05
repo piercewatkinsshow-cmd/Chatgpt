@@ -5,8 +5,12 @@ import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
+import android.widget.ArrayAdapter;
 import android.widget.Button;
+import android.widget.Spinner;
 import android.widget.TextView;
+import android.widget.AdapterView;
+import android.view.View;
 import androidx.core.content.FileProvider;
 
 import java.io.*;
@@ -23,7 +27,51 @@ import java.util.zip.ZipInputStream;
 public class MainActivity extends Activity {
     private TextView status, details;
     private Button connect, check;
+    private Spinner location;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
+
+    private static final Set<String> EUROPE_CODES = new HashSet<>(Arrays.asList(
+            "AL","AD","AT","BY","BE","BA","BG","HR","CY","CZ","DK","EE","FI","FR","DE","GR",
+            "HU","IS","IE","IT","LV","LI","LT","LU","MT","MD","MC","ME","NL","MK","NO","PL",
+            "PT","RO","SM","RS","SK","SI","ES","SE","CH","TR","UA","GB","VA"
+    ));
+
+    private static final LocationOption[] LOCATIONS = {
+            new LocationOption("Canada", "CA", false),
+            new LocationOption("Europe — Fastest", "EU", true),
+            new LocationOption("United Kingdom", "GB", false),
+            new LocationOption("Germany", "DE", false),
+            new LocationOption("France", "FR", false),
+            new LocationOption("Netherlands", "NL", false),
+            new LocationOption("Spain", "ES", false),
+            new LocationOption("Italy", "IT", false),
+            new LocationOption("Switzerland", "CH", false),
+            new LocationOption("Sweden", "SE", false),
+            new LocationOption("Norway", "NO", false),
+            new LocationOption("Finland", "FI", false),
+            new LocationOption("Denmark", "DK", false),
+            new LocationOption("Belgium", "BE", false),
+            new LocationOption("Austria", "AT", false),
+            new LocationOption("Ireland", "IE", false),
+            new LocationOption("Portugal", "PT", false),
+            new LocationOption("Poland", "PL", false),
+            new LocationOption("Czechia", "CZ", false),
+            new LocationOption("Romania", "RO", false),
+            new LocationOption("Greece", "GR", false),
+            new LocationOption("Hungary", "HU", false),
+            new LocationOption("Bulgaria", "BG", false),
+            new LocationOption("Croatia", "HR", false),
+            new LocationOption("Serbia", "RS", false),
+            new LocationOption("Slovakia", "SK", false),
+            new LocationOption("Slovenia", "SI", false),
+            new LocationOption("Lithuania", "LT", false),
+            new LocationOption("Latvia", "LV", false),
+            new LocationOption("Estonia", "EE", false),
+            new LocationOption("Iceland", "IS", false),
+            new LocationOption("Luxembourg", "LU", false),
+            new LocationOption("Ukraine", "UA", false),
+            new LocationOption("Turkey", "TR", false)
+    };
 
     @Override public void onCreate(Bundle b) {
         super.onCreate(b);
@@ -32,96 +80,126 @@ public class MainActivity extends Activity {
         details = findViewById(R.id.details);
         connect = findViewById(R.id.connect);
         check = findViewById(R.id.check);
-        connect.setOnClickListener(v -> findCanadianRelay());
+        location = findViewById(R.id.location);
+
+        String[] names = new String[LOCATIONS.length];
+        for (int i = 0; i < LOCATIONS.length; i++) names[i] = LOCATIONS[i].name;
+        ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, names);
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        location.setAdapter(adapter);
+        location.setSelection(0);
+        location.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                LocationOption opt = LOCATIONS[position];
+                connect.setText("CONNECT TO " + opt.name.toUpperCase(Locale.US));
+                status.setText("Ready");
+                details.setText(opt.regionEurope
+                        ? "Chooses the fastest available European relay."
+                        : "Selected location: " + opt.name);
+            }
+            @Override public void onNothingSelected(AdapterView<?> parent) { }
+        });
+
+        connect.setOnClickListener(v -> findSelectedRelay());
         check.setOnClickListener(v -> checkIp());
+    }
+
+    private LocationOption selectedLocation() {
+        int p = location.getSelectedItemPosition();
+        if (p < 0 || p >= LOCATIONS.length) p = 0;
+        return LOCATIONS[p];
     }
 
     private void setBusy(boolean busy, String msg) {
         runOnUiThread(() -> {
             connect.setEnabled(!busy);
             check.setEnabled(!busy);
+            location.setEnabled(!busy);
             status.setText(msg);
         });
     }
 
-    private void findCanadianRelay() {
-        setBusy(true, "Finding a Canadian server…");
-        details.setText("Trying live Canadian VPN servers.");
+    private void findSelectedRelay() {
+        final LocationOption target = selectedLocation();
+        setBusy(true, "Finding a server in " + target.name + "…");
+        details.setText("Checking live free VPN servers.");
 
         executor.execute(() -> {
             Exception gateError = null;
 
-            // First choice: VPN Gate. It is dynamic and does not require a rotating password.
             try {
                 String csv = getText("https://www.vpngate.net/api/iphone/", 15000);
-                Relay best = parseBestCanada(csv);
+                Relay best = parseBest(csv, target);
                 if (best != null) {
                     String ovpn = new String(Base64.getDecoder().decode(best.configB64), StandardCharsets.UTF_8);
                     ovpn = makeCredentialsInline(ovpn, "vpn", "vpn");
-                    File file = writeProfile(normalizeProfile(ovpn));
+                    File file = writeProfile(normalizeProfile(ovpn), target.code);
                     final Relay chosen = best;
                     runOnUiThread(() -> {
-                        status.setText("Canadian server found");
-                        details.setText("Source: VPN Gate\nRelay: " + chosen.host +
+                        status.setText("Server found: " + chosen.countryCode);
+                        details.setText("Source: VPN Gate\nLocation: " + chosen.countryName +
+                                "\nRelay: " + chosen.host +
                                 "\nApprox. line speed: " + humanRate(chosen.speed) +
                                 "\n\nOpening the VPN profile now.");
-                        launchOpenVpnImport(file);
-                        connect.setEnabled(true);
-                        check.setEnabled(true);
+                        launchOpenVpnImport(file, target.name);
+                        setControlsEnabled(true);
                     });
                     return;
                 }
-                gateError = new IOException("No Canadian VPN Gate relay was listed.");
+                gateError = new IOException("No matching VPN Gate OpenVPN relay was listed.");
             } catch (Exception e) {
                 gateError = e;
             }
 
-            // Fallback: VPNBook maintains fixed Canadian OpenVPN servers.
             try {
                 runOnUiThread(() -> {
-                    status.setText("Trying backup Canadian server…");
-                    details.setText("VPN Gate had no usable Canadian relay. Trying VPNBook Canada.");
+                    status.setText("Trying backup server…");
+                    details.setText("VPN Gate had no usable relay. Checking VPNBook where a free OpenVPN fallback exists.");
                 });
 
-                VpnBookProfile backup = fetchVpnBookCanada();
-                File file = writeProfile(backup.ovpn);
+                VpnBookProfile backup = fetchVpnBook(target);
+                File file = writeProfile(backup.ovpn, target.code);
                 runOnUiThread(() -> {
-                    status.setText("Canadian backup found");
+                    status.setText("Backup server found");
                     details.setText("Source: VPNBook\nServer: " + backup.server +
+                            "\nLocation: " + backup.countryName +
                             "\nProtocol: TCP 443\n\nOpening the VPN profile now.");
-                    launchOpenVpnImport(file);
-                    connect.setEnabled(true);
-                    check.setEnabled(true);
+                    launchOpenVpnImport(file, target.name);
+                    setControlsEnabled(true);
                 });
                 return;
             } catch (Exception bookError) {
                 final String gateMsg = gateError == null ? "unknown" : safeMessage(gateError);
                 final String bookMsg = safeMessage(bookError);
                 runOnUiThread(() -> {
-                    status.setText("Could not connect");
-                    details.setText("Both free Canadian sources failed.\n\n" +
+                    status.setText("No server available");
+                    details.setText("Could not find a free OpenVPN server for " + target.name + ".\n\n" +
                             "VPN Gate: " + gateMsg + "\n" +
-                            "VPNBook: " + bookMsg +
-                            "\n\nTap CONNECT TO CANADA to retry.");
-                    connect.setEnabled(true);
-                    check.setEnabled(true);
+                            "VPNBook fallback: " + bookMsg +
+                            "\n\nTry Europe — Fastest for the best chance of connecting.");
+                    setControlsEnabled(true);
                 });
             }
         });
     }
 
-    private VpnBookProfile fetchVpnBookCanada() throws IOException {
+    private void setControlsEnabled(boolean enabled) {
+        connect.setEnabled(enabled);
+        check.setEnabled(enabled);
+        location.setEnabled(enabled);
+    }
+
+    private VpnBookProfile fetchVpnBook(LocationOption target) throws IOException {
         String page = getText("https://www.vpnbook.com/freevpn/openvpn", 15000);
         String password = extractVpnBookPassword(page);
-        if (password == null || password.length() < 5) {
-            // Current credential at build time; normally the live page parser above supplies it.
-            // Keeping this only as a short-term fallback if VPNBook changes its page markup.
-            password = "ytw2awn";
-        }
+        if (password == null || password.length() < 5) password = "ytw2awn";
 
-        String[] servers = {"ca196", "ca149"};
+        VpnBookServer[] servers = vpnBookServers(target);
+        if (servers.length == 0) throw new IOException("No VPNBook OpenVPN fallback for this location");
+
         IOException last = null;
-        for (String server : servers) {
+        for (VpnBookServer item : servers) {
+            String server = item.id;
             String[] urls = {
                     "https://www.vpnbook.com/free-openvpn-account/vpnbook-openvpn-" + server + ".zip",
                     "https://www.vpnbook.com/free-openvpn-account/VPNBook.com-OpenVPN-" + server.toUpperCase(Locale.US) + ".zip"
@@ -133,17 +211,33 @@ public class MainActivity extends Activity {
                     if (ovpn == null) throw new IOException("TCP 443 profile missing in VPNBook bundle");
                     ovpn = normalizeProfile(ovpn);
                     ovpn = makeCredentialsInline(ovpn, "vpnbook", password);
-                    return new VpnBookProfile(server + ".vpnbook.com", ovpn);
+                    return new VpnBookProfile(server + ".vpnbook.com", item.countryName, ovpn);
                 } catch (IOException e) {
                     last = e;
                 }
             }
         }
-        throw last != null ? last : new IOException("VPNBook Canada profile unavailable");
+        throw last != null ? last : new IOException("VPNBook profile unavailable");
+    }
+
+    private static VpnBookServer[] vpnBookServers(LocationOption target) {
+        if (target.regionEurope) {
+            return new VpnBookServer[] {
+                    new VpnBookServer("uk205", "United Kingdom"), new VpnBookServer("uk68", "United Kingdom"),
+                    new VpnBookServer("de20", "Germany"), new VpnBookServer("de220", "Germany"),
+                    new VpnBookServer("fr200", "France"), new VpnBookServer("fr231", "France"), new VpnBookServer("fr2311", "France")
+            };
+        }
+        switch (target.code) {
+            case "CA": return new VpnBookServer[] { new VpnBookServer("ca196", "Canada"), new VpnBookServer("ca149", "Canada") };
+            case "GB": return new VpnBookServer[] { new VpnBookServer("uk205", "United Kingdom"), new VpnBookServer("uk68", "United Kingdom") };
+            case "DE": return new VpnBookServer[] { new VpnBookServer("de20", "Germany"), new VpnBookServer("de220", "Germany") };
+            case "FR": return new VpnBookServer[] { new VpnBookServer("fr200", "France"), new VpnBookServer("fr231", "France"), new VpnBookServer("fr2311", "France") };
+            default: return new VpnBookServer[0];
+        }
     }
 
     private static String extractVpnBookPassword(String html) {
-        // Convert page markup to rough visible text first so minor HTML changes do not matter.
         String text = html.replaceAll("(?is)<script.*?</script>", " ")
                 .replaceAll("(?is)<style.*?</style>", " ")
                 .replaceAll("(?s)<[^>]+>", " ")
@@ -155,7 +249,6 @@ public class MainActivity extends Activity {
         Matcher m = p.matcher(text);
         if (m.find()) return m.group(1);
 
-        // Some layouts put the credential into a value/data attribute near the word Password.
         p = Pattern.compile("(?is)Password.{0,500}?(?:value|data-[A-Za-z-]+)=[\\\"']([A-Za-z0-9]{5,32})[\\\"']");
         m = p.matcher(html);
         return m.find() ? m.group(1) : null;
@@ -181,17 +274,18 @@ public class MainActivity extends Activity {
         return firstOvpn;
     }
 
-    private File writeProfile(String ovpn) throws IOException {
+    private File writeProfile(String ovpn, String code) throws IOException {
         File dir = new File(getCacheDir(), "vpn");
         if (!dir.exists() && !dir.mkdirs()) throw new IOException("Could not create cache directory");
-        File file = new File(dir, "canada.ovpn");
+        String safe = code.replaceAll("[^A-Za-z0-9]", "").toLowerCase(Locale.US);
+        File file = new File(dir, "location-" + safe + ".ovpn");
         try (FileOutputStream out = new FileOutputStream(file)) {
             out.write(ovpn.getBytes(StandardCharsets.UTF_8));
         }
         return file;
     }
 
-    private void launchOpenVpnImport(File file) {
+    private void launchOpenVpnImport(File file, String targetName) {
         Uri uri = FileProvider.getUriForFile(this, getPackageName() + ".files", file);
         Intent i = new Intent(Intent.ACTION_VIEW);
         i.setDataAndType(uri, "application/x-openvpn-profile");
@@ -200,7 +294,7 @@ public class MainActivity extends Activity {
             startActivity(i);
         } catch (ActivityNotFoundException ex) {
             status.setText("Install OpenVPN for Android first");
-            details.setText("Canada IP found a Canadian server, but Android still needs the free OpenVPN for Android tunnel engine. Install it, then return here and tap CONNECT TO CANADA again.");
+            details.setText("A " + targetName + " server was found, but Android still needs the free OpenVPN for Android tunnel engine. Install it, then return and connect again.");
             try {
                 startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=de.blinkt.openvpn")));
             } catch (Exception ignored) {
@@ -210,6 +304,7 @@ public class MainActivity extends Activity {
     }
 
     private void checkIp() {
+        final LocationOption target = selectedLocation();
         setBusy(true, "Checking public IP…");
         executor.execute(() -> {
             try {
@@ -217,34 +312,36 @@ public class MainActivity extends Activity {
                 String ip = jsonField(json, "ip");
                 String country = jsonField(json, "country");
                 String code = jsonField(json, "country_code");
+                boolean match = target.regionEurope ? EUROPE_CODES.contains(code.toUpperCase(Locale.US)) : target.code.equalsIgnoreCase(code);
                 runOnUiThread(() -> {
-                    status.setText("CA".equalsIgnoreCase(code) ? "Connected through Canada ✓" : "Not currently Canadian");
-                    details.setText("Public IP: " + ip + "\nCountry: " + country + " (" + code + ")");
-                    connect.setEnabled(true);
-                    check.setEnabled(true);
+                    status.setText(match ? "Connected through " + target.name + " ✓" : "IP does not match selection");
+                    details.setText("Public IP: " + ip + "\nCountry: " + country + " (" + code + ")\nSelected: " + target.name);
+                    setControlsEnabled(true);
                 });
             } catch (Exception e) {
                 runOnUiThread(() -> {
                     status.setText("IP check failed");
                     details.setText(safeMessage(e));
-                    connect.setEnabled(true);
-                    check.setEnabled(true);
+                    setControlsEnabled(true);
                 });
             }
         });
     }
 
-    private static Relay parseBestCanada(String csv) throws IOException {
+    private static Relay parseBest(String csv, LocationOption target) throws IOException {
         Relay best = null;
         for (String raw : csv.split("\\r?\\n")) {
             if (raw.startsWith("*") || raw.startsWith("#") || raw.trim().isEmpty()) continue;
             List<String> c = parseCsvLine(raw);
             if (c.size() < 15) continue;
-            String countryCode = c.get(6).trim();
+            String countryName = c.get(5).trim();
+            String countryCode = c.get(6).trim().toUpperCase(Locale.US);
             String config = c.get(14).trim();
-            if (!"CA".equalsIgnoreCase(countryCode) || config.isEmpty()) continue;
+            if (config.isEmpty()) continue;
+            boolean match = target.regionEurope ? EUROPE_CODES.contains(countryCode) : target.code.equalsIgnoreCase(countryCode);
+            if (!match) continue;
             long speed = number(c.get(4));
-            Relay r = new Relay(c.get(0), speed, config);
+            Relay r = new Relay(c.get(0), countryName, countryCode, speed, config);
             if (best == null || r.speed > best.speed) best = r;
         }
         return best;
@@ -282,9 +379,7 @@ public class MainActivity extends Activity {
     }
 
     private static String normalizeProfile(String s) {
-        // Android's OpenVPN engine owns the tunnel device name.
-        s = s.replaceAll("(?m)^\\s*dev\\s+tun\\d+\\s*$", "dev tun");
-        return s;
+        return s.replaceAll("(?m)^\\s*dev\\s+tun\\d+\\s*$", "dev tun");
     }
 
     private static String getText(String url, int timeout) throws IOException {
@@ -296,7 +391,7 @@ public class MainActivity extends Activity {
         c.setInstanceFollowRedirects(true);
         c.setConnectTimeout(timeout);
         c.setReadTimeout(timeout);
-        c.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 16) AppleWebKit/537.36 CanadaIP/1.1");
+        c.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 16) AppleWebKit/537.36 CanadaEuropeIP/1.2");
         c.setRequestProperty("Accept", "*/*");
         try {
             int code = c.getResponseCode();
@@ -347,14 +442,31 @@ public class MainActivity extends Activity {
         return (m == null || m.trim().isEmpty()) ? e.getClass().getSimpleName() : m;
     }
 
+    private static class LocationOption {
+        final String name, code;
+        final boolean regionEurope;
+        LocationOption(String name, String code, boolean regionEurope) {
+            this.name = name; this.code = code; this.regionEurope = regionEurope;
+        }
+    }
+
     private static class Relay {
-        final String host, configB64;
+        final String host, countryName, countryCode, configB64;
         final long speed;
-        Relay(String h, long s, String c) { host = h; speed = s; configB64 = c; }
+        Relay(String host, String countryName, String countryCode, long speed, String configB64) {
+            this.host = host; this.countryName = countryName; this.countryCode = countryCode; this.speed = speed; this.configB64 = configB64;
+        }
+    }
+
+    private static class VpnBookServer {
+        final String id, countryName;
+        VpnBookServer(String id, String countryName) { this.id = id; this.countryName = countryName; }
     }
 
     private static class VpnBookProfile {
-        final String server, ovpn;
-        VpnBookProfile(String server, String ovpn) { this.server = server; this.ovpn = ovpn; }
+        final String server, countryName, ovpn;
+        VpnBookProfile(String server, String countryName, String ovpn) {
+            this.server = server; this.countryName = countryName; this.ovpn = ovpn;
+        }
     }
 }
