@@ -1,29 +1,87 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="match_parent" android:layout_height="match_parent"
-    android:orientation="vertical" android:gravity="center_horizontal"
-    android:padding="28dp" android:background="@color/bg">
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true"
+    android:background="@color/bg">
 
-    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-        android:text="🍁" android:textSize="64sp" android:layout_marginTop="42dp" />
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:gravity="center_horizontal"
+        android:padding="28dp">
 
-    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-        android:text="Canada IP" android:textStyle="bold" android:textSize="32sp"
-        android:textColor="@color/text" android:layout_marginTop="8dp" />
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="🌍"
+            android:textSize="58sp"
+            android:layout_marginTop="24dp" />
 
-    <TextView android:id="@+id/status" android:layout_width="match_parent" android:layout_height="wrap_content"
-        android:text="Ready" android:textSize="17sp" android:gravity="center"
-        android:textColor="@color/muted" android:layout_marginTop="20dp" android:layout_marginBottom="28dp" />
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Canada + Europe IP"
+            android:textStyle="bold"
+            android:textSize="29sp"
+            android:textColor="@color/text"
+            android:layout_marginTop="6dp" />
 
-    <Button android:id="@+id/connect" android:layout_width="match_parent" android:layout_height="64dp"
-        android:text="CONNECT TO CANADA" android:textStyle="bold" android:textSize="18sp"
-        android:textColor="@color/white" android:backgroundTint="@color/red" />
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Choose where you want your public IP to appear"
+            android:textSize="14sp"
+            android:gravity="center"
+            android:textColor="@color/muted"
+            android:layout_marginTop="6dp" />
 
-    <Button android:id="@+id/check" android:layout_width="match_parent" android:layout_height="56dp"
-        android:text="CHECK MY IP" android:layout_marginTop="14dp" />
+        <Spinner
+            android:id="@+id/location"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:layout_marginTop="22dp"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp" />
 
-    <TextView android:id="@+id/details" android:layout_width="match_parent" android:layout_height="wrap_content"
-        android:text="Uses free volunteer VPN Gate Canadian relays. OpenVPN for Android is required to establish the tunnel."
-        android:textColor="@color/muted" android:textSize="13sp" android:gravity="center"
-        android:layout_marginTop="24dp" />
-</LinearLayout>
+        <TextView
+            android:id="@+id/status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Ready"
+            android:textSize="17sp"
+            android:gravity="center"
+            android:textColor="@color/muted"
+            android:layout_marginTop="18dp"
+            android:layout_marginBottom="22dp" />
+
+        <Button
+            android:id="@+id/connect"
+            android:layout_width="match_parent"
+            android:layout_height="64dp"
+            android:text="CONNECT TO CANADA"
+            android:textStyle="bold"
+            android:textSize="17sp"
+            android:textColor="@color/white"
+            android:backgroundTint="@color/red" />
+
+        <Button
+            android:id="@+id/check"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:text="CHECK MY IP"
+            android:layout_marginTop="14dp" />
+
+        <TextView
+            android:id="@+id/details"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Selected location: Canada"
+            android:textColor="@color/muted"
+            android:textSize="13sp"
+            android:gravity="center"
+            android:layout_marginTop="22dp"
+            android:layout_marginBottom="20dp" />
+    </LinearLayout>
+</ScrollView>
