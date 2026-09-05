@@ -7,7 +7,7 @@
     </queries>
     <application
         android:allowBackup="true"
-        android:label="Canada IP"
+        android:label="Canada + Europe IP"
         android:theme="@style/Theme.CanadaIP"
         android:usesCleartextTraffic="false">
         <activity android:name=".MainActivity" android:exported="true">
